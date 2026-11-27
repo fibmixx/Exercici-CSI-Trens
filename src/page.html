@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ferrocarril 1912 — simulador de circulació</title>
+<style>
+:root{--paper:#f4efe3;--card:#fbf8f1;--ink:#2b2620;--muted:#7a6f60;--line:#cfc4b0;--rail:#5a5045;--blue:#2f5d8a;--brown:#8a5a2b;--red:#b3261e;--amber:#c98a12;--green:#3d7a3a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.45 Georgia,"Times New Roman",serif}
+header{padding:14px 20px 10px;border-bottom:2px solid var(--ink);display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end}
+h1{font-size:22px;margin:0;letter-spacing:.5px}
+.sub{color:var(--muted);font-size:13px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-left:auto}
+select,button{font:inherit;font-size:13px;padding:5px 9px;border:1px solid var(--ink);background:var(--card);color:var(--ink);border-radius:3px;cursor:pointer}
+button:hover{background:#efe6d3}
+button.primary{background:var(--ink);color:var(--paper)}
+main{padding:14px 20px 40px;display:grid;gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:10px 12px}
+.card h2{font-size:15px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;font-weight:normal;border-bottom:1px solid var(--line);padding-bottom:4px}
+#clockbar{display:flex;gap:20px;align-items:baseline;flex-wrap:wrap}
+#bigclock{font:bold 28px "Courier New",monospace}
+.stat b{font-family:"Courier New",monospace}
+#map{width:100%;height:auto;display:block}
+.acc{color:var(--red);font-weight:bold}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:1000px){.grid2{grid-template-columns:1fr}}
+.scroll{max-height:340px;overflow:auto}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{border-bottom:1px solid var(--line);padding:3px 5px;text-align:left;vertical-align:top}
+th{font-weight:normal;color:var(--muted);position:sticky;top:0;background:var(--card)}
+tr.lost td{color:var(--red);text-decoration:line-through}
+tr.lost td.st{text-decoration:none;font-weight:bold}
+tr.transit td{color:var(--muted)}
+.mono{font-family:"Courier New",monospace;font-size:12px}
+.books{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:1200px){.books{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:700px){.books{grid-template-columns:1fr}}
+.book h3{margin:0 0 6px;font-size:14px;display:flex;justify-content:space-between;gap:6px;align-items:center}
+.board{background:#2f3a33;color:#e9efe6;font:12px/1.35 "Courier New",monospace;padding:6px 8px;border-radius:3px;white-space:pre-wrap;min-height:60px}
+.notebook{font:12px/1.4 "Courier New",monospace;background:repeating-linear-gradient(#fbf8f1 0 17px,#e3dccd 17px 18px);padding:4px 8px;height:220px;overflow:auto;border:1px solid var(--line);margin-top:6px;white-space:pre-wrap}
+.lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:6px}
+.tabs button{padding:2px 7px;font-size:12px}
+.tabs button.on{background:var(--ink);color:var(--paper)}
+.evtable td,.evtable th{font-size:13px;padding:5px 7px}
+.ok{color:var(--green)}
+details summary{cursor:pointer}
+.legend span{margin-right:14px}
+.sw{display:inline-block;width:12px;height:9px;vertical-align:middle;margin-right:3px;border-radius:2px}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Ferrocarril 1912 · simulador de circulació</h1>
+    <div class="sub">Disseny del 26 de novembre — Marc Rodríguez Camacho · Pol Piquet Las Heras</div>
+  </div>
+  <div class="controls">
+    <label>Protocol <select id="protocol"></select></label>
+    <label>Escenari <select id="scenario"></select></label>
+    <button id="reset">⟲ Reinicia</button>
+    <button id="step">▶ Pas (1 min)</button>
+    <button id="play">⏵ Reprodueix</button>
+    <label>Velocitat <input id="speed" type="range" min="1" max="30" value="8"></label>
+    <button id="all">⏭ Dia sencer</button>
+    <button id="eval" class="primary">Avalua tots els escenaris</button>
+  </div>
+</header>
+<main>
+  <section class="card">
+    <div id="clockbar">
+      <div><span class="sub">Hora real (rellotge de la central)</span><br><span id="bigclock">06:30</span></div>
+      <div class="stat">Viatgers arribats: <b id="sPax">0/8</b></div>
+      <div class="stat">Mercaderies arribats: <b id="sFr">0/2</b></div>
+      <div class="stat">Telegrames perduts: <b id="sLost">0</b></div>
+      <div class="stat">Accidents: <b id="sAcc">0</b></div>
+      <div class="legend sub"><span><i class="sw" style="background:var(--blue)"></i>viatgers</span><span><i class="sw" style="background:var(--brown)"></i>mercaderies</span><span><i class="sw" style="background:var(--amber)"></i>avariat</span><span><i class="sw" style="background:var(--red)"></i>accidentat</span><span>● telegrama · ✖ perdut · 🚶 missatger</span></div>
+    </div>
+    <svg id="map" viewBox="0 0 1200 300"></svg>
+    <div id="accidents"></div>
+  </section>
+
+  <div class="grid2">
+    <section class="card">
+      <h2>Telegrames i missatgers</h2>
+      <div class="scroll"><table><thead><tr><th>#</th><th>Enviat</th><th>De → A</th><th>Missatge</th><th>Estat</th></tr></thead><tbody id="tglog"></tbody></table></div>
+    </section>
+    <section class="card">
+      <h2>Què passa al món <span class="sub" style="text-transform:none;letter-spacing:0">(només ho veu el simulador)</span></h2>
+      <div class="scroll mono" id="events"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Llibretes i pissarres dels actors</h2>
+    <div class="books" id="books"></div>
+  </section>
+
+  <section class="card" id="evalcard" style="display:none">
+    <h2>Avaluació dels sis escenaris</h2>
+    <div id="evalout"></div>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary><b>Com està fet</b> — regles del disseny en paper i decisions afegides en implementar-lo</summary>
+      <div id="about"></div>
+    </details>
+  </section>
+</main>
+<script>
+/*CORE*/
+</script>
+<script>
+/*UI*/
+</script>
+</body>
+</html>

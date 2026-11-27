@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ferrocarril 1912 — simulador de circulació</title>
+<style>
+:root{--paper:#f4efe3;--card:#fbf8f1;--ink:#2b2620;--muted:#7a6f60;--line:#cfc4b0;--rail:#5a5045;--blue:#2f5d8a;--brown:#8a5a2b;--red:#b3261e;--amber:#c98a12;--green:#3d7a3a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.45 Georgia,"Times New Roman",serif}
+header{padding:14px 20px 10px;border-bottom:2px solid var(--ink);display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end}
+h1{font-size:22px;margin:0;letter-spacing:.5px}
+.sub{color:var(--muted);font-size:13px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-left:auto}
+select,button{font:inherit;font-size:13px;padding:5px 9px;border:1px solid var(--ink);background:var(--card);color:var(--ink);border-radius:3px;cursor:pointer}
+button:hover{background:#efe6d3}
+button.primary{background:var(--ink);color:var(--paper)}
+main{padding:14px 20px 40px;display:grid;gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:10px 12px}
+.card h2{font-size:15px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;font-weight:normal;border-bottom:1px solid var(--line);padding-bottom:4px}
+#clockbar{display:flex;gap:20px;align-items:baseline;flex-wrap:wrap}
+#bigclock{font:bold 28px "Courier New",monospace}
+.stat b{font-family:"Courier New",monospace}
+#map{width:100%;height:auto;display:block}
+.acc{color:var(--red);font-weight:bold}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:1000px){.grid2{grid-template-columns:1fr}}
+.scroll{max-height:340px;overflow:auto}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{border-bottom:1px solid var(--line);padding:3px 5px;text-align:left;vertical-align:top}
+th{font-weight:normal;color:var(--muted);position:sticky;top:0;background:var(--card)}
+tr.lost td{color:var(--red);text-decoration:line-through}
+tr.lost td.st{text-decoration:none;font-weight:bold}
+tr.transit td{color:var(--muted)}
+.mono{font-family:"Courier New",monospace;font-size:12px}
+.books{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:1200px){.books{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:700px){.books{grid-template-columns:1fr}}
+.book h3{margin:0 0 6px;font-size:14px;display:flex;justify-content:space-between;gap:6px;align-items:center}
+.board{background:#2f3a33;color:#e9efe6;font:12px/1.35 "Courier New",monospace;padding:6px 8px;border-radius:3px;white-space:pre-wrap;min-height:60px}
+.notebook{font:12px/1.4 "Courier New",monospace;background:repeating-linear-gradient(#fbf8f1 0 17px,#e3dccd 17px 18px);padding:4px 8px;height:220px;overflow:auto;border:1px solid var(--line);margin-top:6px;white-space:pre-wrap}
+.lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:6px}
+.tabs button{padding:2px 7px;font-size:12px}
+.tabs button.on{background:var(--ink);color:var(--paper)}
+.evtable td,.evtable th{font-size:13px;padding:5px 7px}
+.ok{color:var(--green)}
+details summary{cursor:pointer}
+.legend span{margin-right:14px}
+.sw{display:inline-block;width:12px;height:9px;vertical-align:middle;margin-right:3px;border-radius:2px}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Ferrocarril 1912 · simulador de circulació</h1>
+    <div class="sub">Disseny del 26 de novembre — Marc Rodríguez Camacho · Pol Piquet Las Heras</div>
+  </div>
+  <div class="controls">
+    <label>Protocol <select id="protocol"></select></label>
+    <label>Escenari <select id="scenario"></select></label>
+    <button id="reset">⟲ Reinicia</button>
+    <button id="step">▶ Pas (1 min)</button>
+    <button id="play">⏵ Reprodueix</button>
+    <label>Velocitat <input id="speed" type="range" min="1" max="30" value="8"></label>
+    <button id="all">⏭ Dia sencer</button>
+    <button id="eval" class="primary">Avalua tots els escenaris</button>
+  </div>
+</header>
+<main>
+  <section class="card">
+    <div id="clockbar">
+      <div><span class="sub">Hora real (rellotge de la central)</span><br><span id="bigclock">06:30</span></div>
+      <div class="stat">Viatgers arribats: <b id="sPax">0/8</b></div>
+      <div class="stat">Mercaderies arribats: <b id="sFr">0/2</b></div>
+      <div class="stat">Telegrames perduts: <b id="sLost">0</b></div>
+      <div class="stat">Accidents: <b id="sAcc">0</b></div>
+      <div class="legend sub"><span><i class="sw" style="background:var(--blue)"></i>viatgers</span><span><i class="sw" style="background:var(--brown)"></i>mercaderies</span><span><i class="sw" style="background:var(--amber)"></i>avariat</span><span><i class="sw" style="background:var(--red)"></i>accidentat</span><span>● telegrama · ✖ perdut · 🚶 missatger</span></div>
+    </div>
+    <svg id="map" viewBox="0 0 1200 300"></svg>
+    <div id="accidents"></div>
+  </section>
+
+  <div class="grid2">
+    <section class="card">
+      <h2>Telegrames i missatgers</h2>
+      <div class="scroll"><table><thead><tr><th>#</th><th>Enviat</th><th>De → A</th><th>Missatge</th><th>Estat</th></tr></thead><tbody id="tglog"></tbody></table></div>
+    </section>
+    <section class="card">
+      <h2>Què passa al món <span class="sub" style="text-transform:none;letter-spacing:0">(només ho veu el simulador)</span></h2>
+      <div class="scroll mono" id="events"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Llibretes i pissarres dels actors</h2>
+    <div class="books" id="books"></div>
+  </section>
+
+  <section class="card" id="evalcard" style="display:none">
+    <h2>Avaluació dels sis escenaris</h2>
+    <div id="evalout"></div>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary><b>Com està fet</b> — regles del disseny en paper i decisions afegides en implementar-lo</summary>
+      <div id="about"></div>
+    </details>
+  </section>
+</main>
+<script>
+// =====================================================================
+//  FERROCARRIL 1912 — NUCLI DE LA SIMULACIÓ
+//  Dues parts separades:
+//    1. EL MÓN (class World): posició real dels trens, agulles, rellotges,
+//       telegrames, missatgers i detecció d'accidents.
+//    2. ELS ACTORS (PROTOCOLS): central, caps d'estació i maquinistes.
+//       Cada actor només rep un objecte "obs" amb el que pot saber
+//       (la seva llibreta, el que li arriba i el que veu). Mai no reben
+//       cap referència al món.
+// =====================================================================
+const SIM = (() => {
+'use strict';
+
+// ---------------------------------------------------------------------
+//  Utilitats i coneixement públic (mapa i horari: tothom el té en paper)
+// ---------------------------------------------------------------------
+const hm = m => { m = Math.round(m); const h = Math.floor(m / 60), mm = ((m % 60) + 60) % 60; return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); };
+const parseHM = s => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
+const clone = o => JSON.parse(JSON.stringify(o));
+
+const ORDER = ['A', 'B', 'C', 'D', 'E'];
+const STATIONS = {
+  A: { id: 'A', km: 0,  idx: 0, through: 3, dead: null,                 sides: ['E'] },
+  B: { id: 'B', km: 6,  idx: 1, through: 2, dead: { via: 3, side: 'E' }, sides: ['W', 'E'] },
+  C: { id: 'C', km: 16, idx: 2, through: 2, dead: null,                 sides: ['W', 'E'] },
+  D: { id: 'D', km: 24, idx: 3, through: 2, dead: { via: 3, side: 'W' }, sides: ['W', 'E'] },
+  E: { id: 'E', km: 36, idx: 4, through: 3, dead: null,                 sides: ['W'] },
+};
+const SECTIONS = [
+  { id: 'A-B', w: 'A', e: 'B', km: 6,  double: true,  P: 8,  M: 12 },
+  { id: 'B-C', w: 'B', e: 'C', km: 10, double: false, P: 13, M: 20 },
+  { id: 'C-D', w: 'C', e: 'D', km: 8,  double: true,  P: 10, M: 16 },
+  { id: 'D-E', w: 'D', e: 'E', km: 12, double: false, P: 15, M: 24 },
+];
+const sectionBetween = (x, y) => SECTIONS.find(s => (s.w === x && s.e === y) || (s.w === y && s.e === x));
+const dirOf = (x, y) => STATIONS[y].idx > STATIONS[x].idx ? 'E' : 'W';
+const trackOf = (sec, dir) => sec.double ? (dir === 'E' ? 1 : 2) : 1;
+const trackName = (sec, dir) => sec.double ? `${sec.id} ${trackOf(sec, dir)}` : sec.id;
+const opp = s => s === 'E' ? 'W' : 'E';
+const sideName = s => s === 'E' ? 'est' : 'oest';
+const viasOf = st => { const s = STATIONS[st], v = []; for (let i = 1; i <= s.through; i++) v.push(i); if (s.dead) v.push(s.dead.via); return v; };
+const viaAccessible = (st, via, side) => {
+  const s = STATIONS[st];
+  if (!s.sides.includes(side)) return false;
+  if (s.dead && via === s.dead.via) return s.dead.side === side;
+  return via >= 1 && via <= s.through;
+};
+
+const TT_RAW = {
+  T101: 'A 07:00 · B 07:08/07:10 · C 07:23/07:25 · D 07:35/07:37 · E 07:52',
+  T102: 'E 07:55 · D 08:10/08:12 · C 08:22/08:24 · B 08:37/08:39 · A 08:47',
+  T103: 'A 08:15 · B 08:23/08:40 · C 08:53',
+  T104: 'C 09:10 · B 09:23/09:25 · A 09:33',
+  T105: 'A 09:30 · B 09:38/09:40 · C 09:53/09:55 · D 10:05/10:07 · E 10:22',
+  T106: 'E 09:30 · D 09:45/09:47 · C 09:57/09:59 · B 10:12/10:14 · A 10:22',
+  T107: 'A 11:00 · B 11:08/11:10 · C 11:23/11:25 · D 11:35/11:37 · E 11:52',
+  T108: 'E 11:00 · D 11:15/11:17 · C 11:27/11:29 · B 11:42/11:44 · A 11:52',
+};
+const TIMETABLE = {};
+for (const [id, s] of Object.entries(TT_RAW)) {
+  const parts = s.split('·').map(x => x.trim());
+  const route = [], times = {};
+  parts.forEach((p, i) => {
+    const [st, tm] = p.split(' ');
+    route.push(st);
+    const ts = tm.split('/').map(parseHM);
+    if (i === 0) times[st] = { dep: ts[0] };
+    else if (i === parts.length - 1) times[st] = { arr: ts[0] };
+    else times[st] = { arr: ts[0], dep: ts[1] };
+  });
+  TIMETABLE[id] = { id, type: 'P', route, times };
+}
+// Dels mercaderies, els actors només saben d'on surten i on van (no quan).
+const FREIGHT_ROUTES = { M201: ['B', 'C', 'D', 'E'], M202: ['E', 'D', 'C', 'B', 'A'] };
+// Això només ho sap el món:
+const FREIGHT_WORLD = { M201: { appear: parseHM('07:30'), via: 3 }, M202: { appear: parseHM('10:00'), via: null } };
+
+const routeOf = id => TIMETABLE[id] ? TIMETABLE[id].route : FREIGHT_ROUTES[id];
+const nextOf = (id, st) => { const r = routeOf(id); const i = r.indexOf(st); return i >= 0 && i < r.length - 1 ? r[i + 1] : null; };
+
+function fmt(kind, d, from, to, time) {
+  const head = `${d.train || '---'} - ${from} - ${to} - ${hm(time)}`;
+  let body;
+  switch (kind) {
+    case 'Petició': case 'Autorització': case 'Ocupat': case 'Espera': case 'Negació':
+      body = `${kind} - Tren ${d.train} sortir ${d.x} cap a ${d.y} per la via ${d.track}`; break;
+    case 'Sortida':
+      body = `Sortida - Tren ${d.train} sortir ${d.x} cap a ${d.y} per la via ${d.track} - ${hm(d.hora)}`; break;
+    case 'Arribada': case 'Rebut':
+      body = `${kind} - Tren ${d.train} arribada ${d.x} cap a ${d.y} per la via ${d.track}`; break;
+    case 'Retard':
+      body = `Retard - Tren ${d.train} ${d.x} cap a ${d.y} encara no ha arribat (previst ${hm(d.exp)})`; break;
+    case 'Avaria':
+      body = `Avaria - Tren ${d.train} aturat al tram ${d.sec}, km ${Number(d.km).toFixed(1)} des de ${d.x}`; break;
+    case 'Hora':
+      body = `Hora - ${hm(d.hora)}`; break;
+    default: body = `${kind}`;
+  }
+  return head + ' | ' + body;
+}
+
+// El "coneixement" que reben els actors: mapa, horari, reglament. Res del món.
+const KNOWLEDGE = Object.freeze({
+  STATIONS, SECTIONS, ORDER, TIMETABLE, FREIGHT_ROUTES,
+  hm, sectionBetween, dirOf, trackOf, trackName, opp, sideName, viasOf, viaAccessible, routeOf, nextOf, fmt,
+  TELEGRAM_MIN: 2, WALK_KMH: 5,
+});
+
+const SCENARIOS = [
+  { id: 1, name: 'Normal' },
+  { id: 2, name: 'Retard', delay: true },
+  { id: 3, name: 'Avaria', breakdown: true },
+  { id: 4, name: 'Telègraf caigut', telegraph: true },
+  { id: 5, name: 'Rellotge', clock: true },
+  { id: 6, name: 'Tot alhora', delay: true, breakdown: true, telegraph: true, clock: true },
+];
+
+// =====================================================================
+//  1. EL MÓN
+// =====================================================================
+class World {
+  constructor(scenarioId, protocolId) {
+    this.scn = SCENARIOS.find(s => s.id === scenarioId);
+    this.protocolId = protocolId;
+    const P = PROTOCOLS[protocolId];
+    this.t = parseHM('06:30');
+    this.tEnd = parseHM('12:30');
+    this.done = false;
+    this.trains = {};
+    this.vias = {};
+    for (const st of ORDER) { this.vias[st] = {}; for (const v of viasOf(st)) this.vias[st][v] = null; }
+    this.switches = { A: { E: 1 }, B: { W: 1, E: 2 }, C: { W: 1, E: 2 }, D: { W: 1, E: 2 }, E: { W: 1 } };
+    this.clockOff = { A: 0, B: 0, C: 0, D: 0, E: this.scn.clock ? 10 : 0 };
+    this.telegrams = [];
+    this.messengers = [];
+    this.accidents = [];
+    this.events = [];
+    this.arrivedSide = {};
+    this.toChief = { A: [], B: [], C: [], D: [], E: [] };
+    this.toDriver = {};
+    this.breakdownClaimed = false;
+    this.nextMsgId = 1;
+
+    this.toAppear = [];
+    for (const tr of Object.values(TIMETABLE)) {
+      const dep = tr.times[tr.route[0]].dep;
+      const delay = (this.scn.delay && tr.id === 'T102') ? 25 : 0;
+      this.toAppear.push({ id: tr.id, type: 'P', route: tr.route, at: dep - 10 + delay, readyAt: dep + delay, mustWaitReady: delay > 0, via: null });
+    }
+    for (const [id, f] of Object.entries(FREIGHT_WORLD))
+      this.toAppear.push({ id, type: 'M', route: FREIGHT_ROUTES[id], at: f.appear, readyAt: f.appear, via: f.via });
+
+    this.central = P.central(KNOWLEDGE);
+    this.chiefs = {};
+    for (const st of ORDER) this.chiefs[st] = P.chief(st, KNOWLEDGE);
+    this.drivers = {};
+    this.P = P;
+  }
+
+  lineUp(st, t) { return !(this.scn.telegraph && st === 'C' && t >= parseHM('08:00') && t < parseHM('09:30')); }
+  localTime(st) { return this.t + this.clockOff[st]; }
+  ev(s) { this.events.push(`[${hm(this.t)}] ${s}`); }
+
+  accident(type, trains, where, km) {
+    for (const id of trains) this.trains[id].state = 'crashed';
+    this.accidents.push({ type, trains: trains.slice(), where, km, t: this.t });
+    this.ev(`⚠ ACCIDENT: ${type} — ${trains.join(' i ')} — ${where}`);
+  }
+
+  // ---- un minut de simulació ----
+  step() {
+    if (this.done) return;
+    const t = this.t;
+    this.arrivedSide = {};
+    this.doAppearances(t);
+    this.doRetire(t);
+    this.moveTrains(t);
+    this.detectSectionCollisions(t);
+
+    // lliurament de telegrames i missatgers
+    const inbox = { Central: [], A: [], B: [], C: [], D: [], E: [] };
+    for (const g of this.telegrams) {
+      if (g.status !== 'en camí' || g.arriveT > t) continue;
+      if (g.to !== 'Central' && !this.lineUp(g.to, t)) { g.status = 'perdut'; g.lostAt = t; continue; }
+      g.status = 'lliurat'; g.deliveredAt = t;
+      inbox[g.to].push({ from: g.from, kind: g.kind, data: clone(g.data), text: g.text });
+    }
+    const msgr = { A: [], B: [], C: [], D: [], E: [] };
+    for (const m of this.messengers) {
+      if (m.status !== 'en camí' || m.arriveT > t) continue;
+      m.status = 'lliurat'; m.deliveredAt = t;
+      msgr[m.to].push({ from: m.from, data: clone(m.data), text: m.text });
+    }
+
+    // ACTORS: central, caps d'estació, maquinistes (en aquest ordre)
+    this.applyCentral(this.central.decide({ clock: t, inbox: inbox.Central }));
+    for (const st of ORDER) {
+      const obs = {
+        station: st,
+        clock: this.localTime(st),
+        vias: viasOf(st).map(v => {
+          const id = this.vias[st][v];
+          if (!id) return { via: v, train: null };
+          const tr = this.trains[id];
+          return { via: v, train: { id, type: tr.type, stoppedMin: t - tr.stoppedSince, crashed: tr.state === 'crashed' } };
+        }),
+        switches: clone(this.switches[st]),
+        inbox: inbox[st],
+        messengers: msgr[st],
+        papers: this.toChief[st].splice(0),
+      };
+      this.applyChief(st, this.chiefs[st].decide(clone(obs)));
+    }
+    for (const id of Object.keys(this.drivers)) {
+      const tr = this.trains[id];
+      if (tr.loc === 'gone') continue;
+      const obs = { train: id, type: tr.type, crashed: tr.state === 'crashed', ready: t >= tr.readyAt, papers: (this.toDriver[id] || []).splice(0) };
+      if (tr.loc === 'station') obs.at = { station: tr.st, via: tr.via, stationClock: this.localTime(tr.st), stoppedMin: t - tr.stoppedSince };
+      else { const sec = SECTIONS.find(s => s.id === tr.sec); obs.at = { section: tr.sec, from: tr.from, to: tr.to, kmFromOrigin: tr.pos, kmToDest: sec.km - tr.pos, broken: tr.state === 'broken' }; }
+      this.applyDriver(id, this.drivers[id].decide(clone(obs)));
+    }
+
+    this.t++;
+    if (this.t > this.tEnd) this.done = true;
+  }
+
+  doAppearances(t) {
+    for (const a of this.toAppear) {
+      if (a.done || a.at > t) continue;
+      let via = null;
+      if (a.via && !this.vias[a.route[0]][a.via]) via = a.via;
+      else for (let v = 1; v <= STATIONS[a.route[0]].through; v++) if (!this.vias[a.route[0]][v]) { via = v; break; }
+      if (via === null) { if (!a.warned) { this.ev(`${a.id} no troba via lliure a ${a.route[0]} per aparèixer; espera`); a.warned = true; } continue; }
+      a.done = true;
+      const st = a.route[0];
+      this.trains[a.id] = { id: a.id, type: a.type, route: a.route, loc: 'station', st, via, state: 'ok', stoppedSince: t, readyAt: a.mustWaitReady ? a.readyAt : t, pos: 0 };
+      this.vias[st][via] = a.id;
+      this.drivers[a.id] = this.P.driver(a.id, KNOWLEDGE);
+      this.toDriver[a.id] = [];
+      this.ev(`${a.id} apareix a ${st}, via ${via}`);
+    }
+  }
+
+  doRetire(t) {
+    for (const tr of Object.values(this.trains)) {
+      if (tr.loc === 'station' && tr.retireAt != null && tr.retireAt <= t && tr.state === 'ok') {
+        if (this.vias[tr.st][tr.via] === tr.id) this.vias[tr.st][tr.via] = null;
+        this.ev(`${tr.id} se'n va a cotxeres des de ${tr.st}`);
+        tr.loc = 'gone';
+      }
+    }
+  }
+
+  moveTrains(t) {
+    for (const tr of Object.values(this.trains)) {
+      if (tr.loc !== 'section') continue;
+      if (tr.state === 'broken' && t >= tr.brokenUntil) { tr.state = 'ok'; this.ev(`${tr.id} reparat, continua cap a ${tr.to}`); }
+      if (tr.state !== 'ok') continue;
+      const sec = SECTIONS.find(s => s.id === tr.sec);
+      tr.moved += 1;
+      tr.pos = Math.min(sec.km, sec.km * tr.moved / tr.run);
+      if (tr.willBreak && !tr.brokeDone && tr.pos >= sec.km / 2) {
+        tr.pos = sec.km / 2; tr.moved = tr.run / 2; tr.state = 'broken'; tr.brokenUntil = t + 60; tr.brokeDone = true;
+        this.ev(`${tr.id} s'avaria a mig tram ${sec.id} (km ${(STATIONS[sec.w].km + this.xOf(tr, sec)).toFixed(1)}); aturat 60 min`);
+        continue;
+      }
+      if (tr.moved >= tr.run) this.arrive(tr, t);
+    }
+  }
+
+  xOf(tr, sec) { return tr.dir === 'E' ? tr.pos : sec.km - tr.pos; }
+
+  arrive(tr, t) {
+    const st = tr.to, side = opp(tr.dir);
+    const via = this.switches[st][side];
+    const occ = this.vias[st][via];
+    Object.assign(tr, { loc: 'station', st, via, stoppedSince: t, sec: null });
+    this.arrivedSide[st + side] = t;
+    if (occ) {
+      this.accident("Xoc a l'estació", [tr.id, occ], `${st} via ${via}`, STATIONS[st].km);
+      return;
+    }
+    this.vias[st][via] = tr.id;
+    this.ev(`${tr.id} arriba a ${st}, via ${via}`);
+    if (tr.route[tr.route.length - 1] === st) { tr.arrivedFinal = t; tr.retireAt = t + 5; }
+  }
+
+  detectSectionCollisions() {
+    const groups = {};
+    for (const tr of Object.values(this.trains)) {
+      if (tr.loc !== 'section') continue;
+      (groups[tr.sec + '|' + tr.track] = groups[tr.sec + '|' + tr.track] || []).push(tr);
+    }
+    for (const [k, list] of Object.entries(groups)) {
+      const sec = SECTIONS.find(s => s.id === k.split('|')[0]);
+      for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+        const a = list[i], b = list[j];
+        if (a.state === 'crashed' && b.state === 'crashed') continue;
+        const xa = this.xOf(a, sec), xb = this.xOf(b, sec);
+        let hit = null;
+        if (a.dir !== b.dir) {
+          const e = a.dir === 'E' ? a : b, w = a.dir === 'E' ? b : a;
+          if (this.xOf(e, sec) >= this.xOf(w, sec)) hit = 'Xoc frontal';
+        } else {
+          const [lead, foll] = a.enteredAt <= b.enteredAt ? [a, b] : [b, a];
+          const xl = this.xOf(lead, sec), xf = this.xOf(foll, sec);
+          if (foll.moved > 0 && (a.dir === 'E' ? xf >= xl : xf <= xl)) hit = 'Abast';
+        }
+        if (hit) {
+          const km = STATIONS[sec.w].km + (xa + xb) / 2;
+          this.accident(hit, [a.id, b.id], `tram ${trackName(sec, a.dir)}, km ${km.toFixed(1)}`, km);
+          a.state = 'crashed'; b.state = 'crashed';
+        }
+      }
+    }
+  }
+
+  sendTelegram(from, to, a) {
+    const t = this.t;
+    const g = { id: this.nextMsgId++, from, to, sentT: t, arriveT: t + 2, kind: a.kind, data: clone(a.data), text: a.text, status: 'en camí' };
+    const st = from === 'Central' ? to : from;
+    if (!this.lineUp(st, t)) { g.status = 'perdut'; g.lostAt = t; }
+    this.telegrams.push(g);
+  }
+
+  sendMessenger(fromLabel, fromKm, to, data, text) {
+    const dist = Math.abs(STATIONS[to].km - fromKm);
+    const mins = Math.ceil(dist / 5 * 60);
+    this.messengers.push({ id: this.nextMsgId++, kind: 'missatger', from: fromLabel, fromKm, to, sentT: this.t, arriveT: this.t + mins, data: clone(data), text, status: 'en camí' });
+  }
+
+  applyCentral(acts) {
+    for (const a of acts || []) {
+      if (a.type === 'telegram' && ORDER.includes(a.to)) this.sendTelegram('Central', a.to, a);
+    }
+  }
+
+  applyChief(st, acts) {
+    for (const a of acts || []) {
+      if (a.type === 'telegram') { this.sendTelegram(st, 'Central', a); }
+      else if (a.type === 'switch') {
+        if (viaAccessible(st, a.via, a.side)) this.switches[st][a.side] = a.via;
+      } else if (a.type === 'paper') {
+        const tr = this.trains[a.train];
+        if (tr && tr.loc === 'station' && tr.st === st) this.toDriver[a.train].push(clone(a.paper));
+      } else if (a.type === 'setClock') {
+        this.clockOff[st] = a.value - this.t;
+      } else if (a.type === 'messenger') {
+        if (Math.abs(STATIONS[a.to].idx - STATIONS[st].idx) === 1) this.sendMessenger(`Estació ${st}`, STATIONS[st].km, a.to, a.data, a.text);
+      }
+    }
+  }
+
+  applyDriver(id, acts) {
+    const tr = this.trains[id];
+    for (const a of acts || []) {
+      if (a.type === 'depart') this.depart(tr);
+      else if (a.type === 'handPaper') { if (tr.loc === 'station') this.toChief[tr.st].push(clone(a.paper)); }
+      else if (a.type === 'messenger') {
+        if (tr.loc === 'section' && (a.to === tr.from || a.to === tr.to)) {
+          const sec = SECTIONS.find(s => s.id === tr.sec);
+          this.sendMessenger(`Maquinista ${id}`, STATIONS[sec.w].km + this.xOf(tr, sec), a.to, a.data, a.text);
+        }
+      }
+    }
+  }
+
+  depart(tr) {
+    const t = this.t;
+    if (tr.loc !== 'station' || tr.state !== 'ok') return;
+    if (t - tr.stoppedSince < 1 || t < tr.readyAt) return;
+    const nx = nextOf(tr.id, tr.st);
+    if (!nx) return;
+    const sec = sectionBetween(tr.st, nx), dir = dirOf(tr.st, nx), side = dir;
+    const sw = this.switches[tr.st][side];
+    if (sw !== tr.via) {
+      this.accident('Descarrilament', [tr.id], `${tr.st}, sortida costat ${sideName(side)} (agulla a via ${sw}, tren a via ${tr.via})`, STATIONS[tr.st].km);
+      return;
+    }
+    if (this.arrivedSide[tr.st + side] === t) {
+      this.accident('Descarrilament', [tr.id], `${tr.st}, agulla ${sideName(side)} moguda mentre hi entrava un altre tren`, STATIONS[tr.st].km);
+      return;
+    }
+    this.vias[tr.st][tr.via] = null;
+    this.ev(`${tr.id} surt de ${tr.st} (via ${tr.via}) cap a ${nx} per la via ${trackName(sec, dir)}`);
+    Object.assign(tr, { loc: 'section', sec: sec.id, dir, track: trackOf(sec, dir), from: tr.st, to: nx, moved: 0, pos: 0, run: tr.type === 'P' ? sec.P : sec.M, enteredAt: t, st: null, via: null });
+    if (tr.firstDep == null) tr.firstDep = t;
+    if (this.scn.breakdown && sec.id === 'D-E' && t >= parseHM('09:00') && !this.breakdownClaimed) { this.breakdownClaimed = true; tr.willBreak = true; }
+  }
+
+  runToEnd() { while (!this.done) this.step(); return this; }
+
+  results() {
+    const pax = Object.values(TIMETABLE);
+    let arrived = 0, delaySum = 0;
+    for (const p of pax) {
+      const tr = this.trains[p.id];
+      if (tr && tr.arrivedFinal != null) { arrived++; delaySum += Math.max(0, tr.arrivedFinal - p.times[p.route[p.route.length - 1]].arr); }
+    }
+    const freight = ['M201', 'M202'].filter(id => this.trains[id] && this.trains[id].arrivedFinal != null).length;
+    return { accidents: this.accidents.slice(), paxArrived: arrived, avgDelay: arrived ? delaySum / arrived : null, freightArrived: freight };
+  }
+}
+
+// =====================================================================
+//  2. ELS ACTORS
+// =====================================================================
+const PROTOCOLS = {};
+
+// ---------- Eines comunes dels caps d'estació (només fan servir el que veuen) ----------
+function freeThroughVias(K, st, obsVias, reserved) {
+  return obsVias.filter(v => !v.train && v.via <= K.STATIONS[st].through && !reserved.includes(v.via)).map(v => v.via);
+}
+function defaultVia(side, free) { if (!free.length) return null; return side === 'W' ? Math.min(...free) : Math.max(...free); }
+
+// ---------- Maquinista (comú): surt quan té un paper per a aquesta estació i l'hora ha arribat ----------
+function makeDriver(id, K, opts = {}) {
+  const me = { kind: 'driver', id, llibreta: [] };
+  let permit = null, sentMessenger = false, brokenFor = 0, clock = null;
+  const log = s => me.llibreta.push(`[${clock != null ? K.hm(clock) : '--:--'}] ${s}`);
+  me.decide = o => {
+    const acts = [];
+    if (o.at.station) clock = o.at.stationClock;
+    for (const p of o.papers) { permit = p; log(`Paper rebut: ${p.text}`); }
+    if (o.crashed) return acts;
+    if (o.at.station) {
+      if (permit && permit.x !== o.at.station) {
+        if (opts.handOver) { acts.push({ type: 'handPaper', paper: permit }); log(`Arribo a ${o.at.station}; lliuro el paper al cap d'estació`); }
+        else log(`Arribo a ${o.at.station}`);
+        permit = null;
+      }
+      if (permit && permit.x === o.at.station && o.at.stationClock >= permit.hora && o.ready && o.at.stoppedMin >= 1) {
+        if (!permit.departLogged) { log(`Surto de ${o.at.station} cap a ${permit.y} (rellotge de l'estació ${K.hm(o.at.stationClock)})`); permit.departLogged = true; }
+        acts.push({ type: 'depart' });
+      }
+    } else if (o.at.broken) {
+      brokenFor++;
+      if (brokenFor === 1) log(`El tren s'ha avariat al tram ${o.at.section}. Els tripulants intenten arreglar-lo`);
+      if (opts.messenger && brokenFor >= 10 && !sentMessenger) {
+        sentMessenger = true;
+        const to = o.at.kmToDest <= o.at.kmFromOrigin ? o.at.to : o.at.from;
+        const data = { kind: 'avaria', train: id, sec: o.at.section, x: o.at.from, km: o.at.kmFromOrigin };
+        acts.push({ type: 'messenger', to, data, text: `Avaria del ${id} al tram ${o.at.section}, a ${o.at.kmFromOrigin.toFixed(1)} km de ${o.at.from}` });
+        log(`No es pot arreglar: envio un tripulant a peu cap a ${to}`);
+      }
+    } else if (brokenFor > 0) { log(`Reparat: continuem`); brokenFor = 0; }
+    return acts;
+  };
+  me.view = () => ({ title: `Maquinista ${id}`, pissarra: [permit ? `Paper: ${permit.text}` : 'Sense paper de sortida'], llibreta: me.llibreta });
+  return me;
+}
+
+// =====================================================================
+//  PROTOCOL D'EXEMPLE: cada estació deixa sortir els trens a l'hora de l'horari i prou.
+// =====================================================================
+PROTOCOLS.exemple = {
+  name: "Exemple: l'horari i prou",
+  central(K) {
+    const me = { kind: 'central', llibretes: { A: [], B: [], C: [], D: [], E: [] }, general: [] };
+    me.decide = () => [];
+    me.view = () => ({ title: 'Central', pissarra: ['(La central no fa res en aquest protocol)'], llibretes: me.llibretes });
+    return me;
+  },
+  chief(st, K) {
+    const me = { kind: 'chief', st, llibreta: [] };
+    const given = {}; const seen = {};
+    let L = 0;
+    const log = s => me.llibreta.push(`[${K.hm(L)}] ${s}`);
+    me.decide = o => {
+      L = o.clock; const acts = [];
+      const present = {};
+      o.vias.forEach(v => { if (v.train) present[v.train.id] = { ...v.train, via: v.via }; });
+      for (const id of Object.keys(present)) if (!seen[id]) { seen[id] = true; log(`Tren ${id} a la via ${present[id].via}`); }
+      for (const id of Object.keys(seen)) if (!present[id]) { delete seen[id]; log(`El tren ${id} ja no és a l'estació`); }
+      const wantSide = {};
+      for (const [id, p] of Object.entries(present)) {
+        if (p.crashed || p.type !== 'P') continue;
+        const nx = K.nextOf(id, st); if (!nx) continue;
+        const dep = K.TIMETABLE[id].times[st].dep;
+        if (L >= dep && !given[id]) {
+          given[id] = L;
+          const sec = K.sectionBetween(st, nx), track = K.trackName(sec, K.dirOf(st, nx));
+          const paper = { kind: 'ordre', train: id, x: st, y: nx, track, hora: L, text: `Ordre de sortida: ${id} de ${st} cap a ${nx} a les ${K.hm(L)}` };
+          acts.push({ type: 'paper', train: id, paper });
+          log(`És l'hora de l'horari (${K.hm(dep)}): ordre de sortida al ${id} cap a ${nx}`);
+        }
+        if (given[id] != null) wantSide[K.dirOf(st, nx)] = p.via;
+      }
+      for (const side of K.STATIONS[st].sides) {
+        let want = wantSide[side];
+        if (want == null) want = defaultVia(side, freeThroughVias(K, st, o.vias, []));
+        if (want != null && want !== o.switches[side]) { acts.push({ type: 'switch', side, via: want }); log(`Agulla ${K.sideName(side)} → via ${want}`); }
+      }
+      return acts;
+    };
+    me.view = () => ({ title: `Estació ${st}`, pissarra: [`Rellotge: ${K.hm(L)}`, ...Object.keys(seen).map(id => `${id}`)], llibreta: me.llibreta });
+    return me;
+  },
+  driver(id, K) { return makeDriver(id, K, { handOver: false, messenger: false }); },
+};
+
+// =====================================================================
+//  PROTOCOL DEL PAPER (Marc Rodríguez Camacho i Pol Piquet Las Heras, 26/11)
+//  opts: correccions que el simulador ha fet necessàries (vegeu README).
+// =====================================================================
+function makePaperProtocol(name, opts) {
+  return {
+    name, opts,
+    // ------------------------------- CENTRAL -------------------------------
+    central(K) {
+      const me = { kind: 'central', llibretes: { A: [], B: [], C: [], D: [], E: [] }, general: [] };
+      const blocks = {};                                     // pissarra: estat de cada via de cada tram
+      const at = {}, incoming = {};                          // pissarra: trens a cada estació i trens que hi van
+      for (const st of K.ORDER) { at[st] = []; incoming[st] = []; }
+      const queue = [];                                      // peticions en espera
+      const removals = [];
+      const previstos = new Set();
+      let T = 0, horaSent = false;
+      const log = (st, s) => me.llibretes[st].push(`[${K.hm(T)}] ${s}`);
+      const glog = s => me.general.push(`[${K.hm(T)}] ${s}`);
+      const tg = (st, kind, data) => { const text = K.fmt(kind, data, 'Central', st, T); log(st, '→ ' + text); return { type: 'telegram', to: st, kind, data, text }; };
+      const key = (x, y) => K.trackName(K.sectionBetween(x, y), K.dirOf(x, y));
+      const add = (arr, v) => { if (!arr.includes(v)) arr.push(v); };
+      const del = (arr, v) => { const i = arr.indexOf(v); if (i >= 0) arr.splice(i, 1); };
+      const free = st => K.STATIONS[st].through - at[st].length - incoming[st].length;
+      const runOf = (train, x, y) => { const s = K.sectionBetween(x, y); return K.TIMETABLE[train] ? s.P : s.M; };
+      const isFinal = (train, st) => { const r = K.routeOf(train); return r[r.length - 1] === st; };
+
+      function grant(d, acts) {
+        const k = key(d.x, d.y);
+        blocks[k] = { train: d.train, x: d.x, y: d.y, track: k, authT: T };
+        add(incoming[d.y], d.train);
+        glog(`Pissarra: ${k} OCUPADA pel ${d.train} (${d.x}→${d.y})`);
+        acts.push(tg(d.x, 'Autorització', { train: d.train, x: d.x, y: d.y, track: k }));
+        acts.push(tg(d.y, 'Ocupat', { train: d.train, x: d.x, y: d.y, track: k }));
+      }
+
+      me.decide = o => {
+        T = o.clock; const acts = [];
+        // Procediment d'excepció "rellotge": a una hora determinada, missatge Hora a totes les estacions
+        if (!horaSent) { horaSent = true; for (const st of K.ORDER) acts.push(tg(st, 'Hora', { train: '---', hora: T })); }
+        // Pissarra: els trens de viatgers apareixen a l'origen 10 minuts abans (reglament de la companyia)
+        for (const tr of Object.values(K.TIMETABLE)) {
+          const o0 = tr.route[0];
+          if (!previstos.has(tr.id) && T >= tr.times[o0].dep - 10) { previstos.add(tr.id); add(at[o0], tr.id); glog(`Pissarra: ${tr.id} previst a ${o0} (horari)`); }
+        }
+        for (let i = 0; i < removals.length; i++) if (T >= removals[i].t) { del(at[removals[i].st], removals[i].train); glog(`Pissarra: ${removals[i].train} retirat a cotxeres a ${removals[i].st}`); removals.splice(i--, 1); }
+
+        for (const m of o.inbox) {
+          const d = m.data; log(m.from, '← ' + m.text);
+          if (m.kind === 'Petició') {
+            const k = key(d.x, d.y), b = blocks[k];
+            if (b && b.train === d.train) { glog(`Petició repetida del ${d.train}: es torna a enviar l'autorització`); acts.push(tg(d.x, 'Autorització', { ...d, track: k })); }
+            else if (queue.find(q => q.train === d.train)) { acts.push(tg(d.x, 'Espera', d)); }
+            else {
+              if (!incoming[d.x].includes(d.train)) add(at[d.x], d.train);
+              if (!b && free(d.y) > 0) grant(d, acts);
+              else if (b) { queue.push({ ...d, reqT: T }); glog(`${k} ocupada: ${d.train} a la cua`); acts.push(tg(d.x, 'Espera', d)); }
+              else { glog(`${d.y} sense vies lliures: es nega la petició del ${d.train}`); acts.push(tg(d.x, 'Negació', d)); }
+            }
+          } else if (m.kind === 'Sortida') {
+            del(at[d.x], d.train);
+            const b = blocks[key(d.x, d.y)];
+            if (b && b.train === d.train) { b.depT = d.hora; b.expArr = d.hora + runOf(d.train, d.x, d.y); }
+          } else if (m.kind === 'Arribada') {
+            const k = key(d.x, d.y), b = blocks[k];
+            if (b && b.train === d.train) {
+              delete blocks[k]; del(incoming[d.y], d.train); del(at[d.x], d.train); add(at[d.y], d.train);
+              glog(`Pissarra: ${k} LLIURE (arribada del ${d.train} a ${d.y})`);
+              if (isFinal(d.train, d.y)) removals.push({ st: d.y, train: d.train, t: T + 5 });
+              acts.push(tg(d.y, 'Rebut', d));
+              acts.push(tg(d.x, 'Arribada', d));
+            } else { acts.push(tg(d.y, 'Rebut', d)); }
+          } else if (m.kind === 'Avaria') {
+            const b = Object.values(blocks).find(b => b.train === d.train);
+            glog(b ? `AVARIA del ${d.train} al tram ${d.sec}: la via queda bloquejada; es planeja un tren de socors`
+                   : `Avaria del ${d.train} comunicada, però el tren ja ha arribat: no cal socors`);
+          }
+        }
+        // cua d'espera, per ordre d'arribada
+        for (let i = 0; i < queue.length; i++) {
+          const q = queue[i];
+          if (!blocks[key(q.x, q.y)] && free(q.y) > 0) { grant(q, acts); queue.splice(i--, 1); }
+        }
+        // tren endarrerit: avís de retard a l'estació de destí
+        for (const b of Object.values(blocks)) {
+          const exp = b.expArr != null ? b.expArr : b.authT + 5 + runOf(b.train, b.x, b.y);
+          if (T > exp + 10 && !b.retard) { b.retard = true; glog(`${b.train} fa tard al tram ${b.track}`); acts.push(tg(b.y, 'Retard', { train: b.train, x: b.x, y: b.y, track: b.track, exp })); }
+        }
+        return acts;
+      };
+      me.view = () => {
+        const p = ['TRAMS'];
+        for (const s of K.SECTIONS) for (const dir of (s.double ? ['E', 'W'] : ['E'])) {
+          const k = K.trackName(s, dir), b = blocks[k];
+          p.push(`  ${k.padEnd(7)} ${b ? `OCUPADA · ${b.train} ${b.x}→${b.y} · aut ${K.hm(b.authT)}${b.depT != null ? ' · surt ' + K.hm(b.depT) : ''}${b.expArr != null ? ' · arr. prev. ' + K.hm(b.expArr) : ''}${b.retard ? ' · RETARD' : ''}` : 'lliure'}`);
+        }
+        p.push('ESTACIONS');
+        for (const st of K.ORDER) p.push(`  ${st}: ${at[st].join(', ') || '—'}${incoming[st].length ? ' | venen: ' + incoming[st].join(', ') : ''} | vies lliures ${free(st)}/${K.STATIONS[st].through}`);
+        p.push('CUA D\'ESPERA');
+        p.push(queue.length ? queue.map(q => `  ${q.train} ${q.x}→${q.y} (${K.hm(q.reqT)})`).join('\n') : '  —');
+        return { title: 'Central', pissarra: p, llibretes: me.llibretes, general: me.general };
+      };
+      return me;
+    },
+
+    // ----------------------------- CAP D'ESTACIÓ -----------------------------
+    chief(st, K) {
+      const me = { kind: 'chief', st, llibreta: [] };
+      const recs = {};          // llibreta de trens: un registre per tren
+      const expected = [];      // trens anunciats amb "Ocupat"
+      let L = 0;
+      const log = s => me.llibreta.push(`[${K.hm(L)}] ${s}`);
+      const tg = (kind, data) => { const text = K.fmt(kind, data, st, 'Central', L); log('→ ' + text); return { type: 'telegram', to: 'Central', kind, data, text }; };
+      const final = id => { const r = K.routeOf(id); return r[r.length - 1] === st; };
+
+      me.decide = o => {
+        L = o.clock; const acts = [];
+        const present = {};
+        o.vias.forEach(v => { if (v.train) present[v.train.id] = { ...v.train, via: v.via }; });
+
+        for (const p of o.papers) { log(`Paper lliurat pel maquinista del ${p.train}: ${p.text}`); const r = recs[p.train] || (recs[p.train] = { id: p.train }); r.cameFrom = p.x; r.cameTrack = p.track; }
+
+        for (const m of o.inbox) {
+          const d = m.data; log('← ' + m.text);
+          const r = recs[d.train];
+          if (m.kind === 'Hora') {
+            const nv = d.hora + (opts.horaPlus2 ? K.TELEGRAM_MIN : 0);
+            if (nv !== L) { acts.push({ type: 'setClock', value: nv }); log(`Rellotge posat en hora: ${K.hm(L)} → ${K.hm(nv)}`); L = nv; }
+            else log('Rellotge comprovat: coincideix');
+          } else if (m.kind === 'Autorització') { if (r && ['peticio', 'espera', 'negat'].includes(r.phase)) { r.phase = 'autoritzat'; r.auth = d; } }
+          else if (m.kind === 'Espera') { if (r && r.phase === 'peticio') { r.phase = 'espera'; r.esperaT = L; } }
+          else if (m.kind === 'Negació') { if (r && ['peticio', 'espera'].includes(r.phase)) { r.phase = 'negat'; r.retryAt = L + 5; } }
+          else if (m.kind === 'Ocupat') { if (!expected.find(e => e.train === d.train) && !(r && r.via)) expected.push({ train: d.train, x: d.x, side: K.dirOf(st, d.x), via: null, track: d.track }); }
+          else if (m.kind === 'Rebut') { if (r && r.arrPending) { r.arrPending = null; log(`Arribada del ${d.train} confirmada`); if (r.phase === 'cotxeres') delete recs[d.train]; } }
+          else if (m.kind === 'Arribada') { if (r && r.phase === 'sortit') delete recs[d.train]; }
+        }
+        for (const ms of o.messengers) {
+          log(`Missatger: ${ms.text}`);
+          if (ms.data.kind === 'avaria') acts.push(tg('Avaria', { train: ms.data.train, sec: ms.data.sec, x: ms.data.x, km: ms.data.km }));
+        }
+
+        // què veig a les vies
+        for (const [id, p] of Object.entries(present)) {
+          let r = recs[id];
+          if (!r || r.via == null) {
+            r = recs[id] = Object.assign(r || { id }, { via: p.via, type: p.type });
+            const ei = expected.findIndex(e => e.train === id);
+            const route = K.routeOf(id), ri = route.indexOf(st);
+            // Si aquesta no és l'estació d'origen del tren, l'he vist entrar: és una arribada
+            // (encara que l'avís "Ocupat" s'hagi perdut).
+            if (r.cameFrom || ei >= 0 || ri > 0) {
+              const x = r.cameFrom || (ei >= 0 ? expected[ei].x : route[ri - 1]);
+              if (ei < 0) log(`El ${id} arriba sense que m'haguessin avisat (Ocupat no rebut)`);
+              const track = r.cameTrack || K.trackName(K.sectionBetween(x, st), K.dirOf(x, st));
+              if (ei >= 0) expected.splice(ei, 1);
+              r.arrPending = { x, y: st, track, lastSent: L };
+              r.phase = final(id) ? 'final' : 'arribat';
+              log(`Arriba el tren ${id} a la via ${p.via}`);
+              acts.push(tg('Arribada', { train: id, x, y: st, track }));
+            } else { r.phase = final(id) ? 'final' : 'origen'; log(`Tren ${id} a la via ${p.via}, a punt per sortir`); }
+          } else r.via = p.via;
+          r.crashed = p.crashed;
+        }
+        // l'expected que ha arribat abans que el paper
+        for (const [id, r] of Object.entries(recs)) {
+          if (r.via != null && !present[id]) {
+            if (r.phase === 'paper') { r.phase = 'sortit'; log(`Ha sortit el tren ${id} cap a ${r.auth.y}`); r.via = null; }
+            else {
+              log(`El tren ${id} ja no és a l'estació (cotxeres)`);
+              // Pas 5 del procediment normal: si no arriba el rebut, es continua enviant l'arribada.
+              if (r.arrPending) { r.via = null; r.phase = 'cotxeres'; } else delete recs[id];
+            }
+          }
+        }
+
+        // arribades no confirmades: es reenvien periòdicament
+        for (const r of Object.values(recs)) if (r.arrPending && L - r.arrPending.lastSent >= 6) {
+          log(`Sense rebut de l'arribada del ${r.id}: es torna a enviar`);
+          acts.push(tg('Arribada', { train: r.id, x: r.arrPending.x, y: st, track: r.arrPending.track }));
+          r.arrPending.lastSent = L;
+        }
+
+        // peticions de via
+        for (const r of Object.values(recs)) {
+          if (r.via == null || r.crashed) continue;
+          const nx = K.nextOf(r.id, st); if (!nx) continue;
+          const track = K.trackName(K.sectionBetween(st, nx), K.dirOf(st, nx));
+          const d = { train: r.id, x: st, y: nx, track };
+          const sched = K.TIMETABLE[r.id] ? K.TIMETABLE[r.id].times[st].dep : null;
+          if (r.phase === 'origen' || r.phase === 'arribat' || (r.phase === 'negat' && L >= r.retryAt)) {
+            if (sched != null && L < sched - 6) continue;
+            acts.push(tg('Petició', d)); r.phase = 'peticio'; r.petT = L;
+          } else if (r.phase === 'peticio' && L - r.petT >= 6) {
+            log(`Petició del ${r.id} sense resposta: es repeteix`); acts.push(tg('Petició', d)); r.petT = L;
+          } else if (opts.resendAfterEspera && r.phase === 'espera' && L - r.esperaT >= 10) {
+            log(`Fa estona que el ${r.id} espera: es recorda la petició`); acts.push(tg('Petició', d)); r.esperaT = L;
+          }
+        }
+
+        // autoritzats: preparar la via, avisar el maquinista i telegrafiar la sortida
+        for (const r of Object.values(recs)) {
+          if (r.phase !== 'autoritzat' || r.via == null || r.crashed) continue;
+          const side = K.dirOf(st, r.auth.y);
+          if (opts.sideRule && expected.some(e => e.side === side)) {
+            if (!r.waitNoted) { log(`${r.id} autoritzat, però arriba un tren pel costat ${K.sideName(side)}: no surt fins que hagi entrat`); r.waitNoted = true; }
+            continue;
+          }
+          const sched = K.TIMETABLE[r.id] ? K.TIMETABLE[r.id].times[st].dep : null;
+          const target = Math.max(L + 1, sched != null ? sched : 0);
+          if (target - L > 1) continue;
+          const paper = { kind: 'permís', train: r.id, x: st, y: r.auth.y, track: r.auth.track, hora: target, text: `Permís: ${r.id} pot sortir de ${st} cap a ${r.auth.y} per la via ${r.auth.track} a les ${K.hm(target)}` };
+          acts.push({ type: 'paper', train: r.id, paper });
+          log(`Via preparada. Paper al maquinista del ${r.id}: sortida a les ${K.hm(target)}`);
+          acts.push(tg('Sortida', { train: r.id, x: st, y: r.auth.y, track: r.auth.track, hora: target }));
+          r.phase = 'paper'; r.paper = paper;
+        }
+
+        // agulles (encarregats ferroviaris)
+        const reserved = () => expected.filter(e => e.via != null).map(e => e.via);
+        for (const e of expected) {
+          const ok = e.via != null && o.vias.find(v => v.via === e.via && !v.train);
+          if (!ok) {
+            const prev = e.via; e.via = null;
+            const v = defaultVia(e.side, freeThroughVias(K, st, o.vias, reserved()));
+            e.via = v;
+            if (v == null) log(`ALERTA: no hi ha cap via lliure per rebre el ${e.train}`);
+            else if (prev !== v) log(`Via ${v} reservada per al ${e.train}, que ve de ${e.x}`);
+          }
+        }
+        for (const side of K.STATIONS[st].sides) {
+          let want = null;
+          const dep = Object.values(recs).find(r => r.phase === 'paper' && r.via != null && L >= r.paper.hora && K.dirOf(st, r.paper.y) === side);
+          if (dep) want = dep.via;
+          else { const e = expected.find(e => e.side === side && e.via != null); if (e) want = e.via; }
+          if (want == null) want = defaultVia(side, freeThroughVias(K, st, o.vias, reserved()));
+          if (want != null && want !== o.switches[side]) { acts.push({ type: 'switch', side, via: want }); log(`Agulla ${K.sideName(side)} → via ${want}`); }
+        }
+        me._L = L; me._o = o;
+        return acts;
+      };
+      me.view = () => {
+        const o = me._o; const p = [`Rellotge: ${K.hm(L)}`];
+        if (o) {
+          for (const v of o.vias) {
+            const r = v.train && recs[v.train.id];
+            const e = expected.find(e => e.via === v.via);
+            const dead = v.via > K.STATIONS[st].through ? ' (morta)' : '';
+            const PH = { origen: 'a punt', arribat: 'arribat', peticio: 'petició enviada', espera: 'en espera', negat: 'negat, cal tornar a demanar', autoritzat: 'autoritzat', final: 'final de trajecte' };
+            const ph = r ? (r.phase === 'paper' ? `permís lliurat (${K.hm(r.paper.hora)})` : (PH[r.phase] || r.phase)) : '';
+            p.push(`Via ${v.via}${dead}: ${v.train ? v.train.id + (ph ? ' — ' + ph : '') : 'lliure'}${e ? ' · reservada ' + e.train : ''}`);
+          }
+          p.push('Agulles: ' + Object.entries(o.switches).map(([s, v]) => `${K.sideName(s)}→${v}`).join(' · '));
+        }
+        p.push('Esperats: ' + (expected.map(e => `${e.train} de ${e.x}`).join(', ') || '—'));
+        const pend = Object.values(recs).filter(r => r.arrPending);
+        p.push('Arribades sense rebut: ' + (pend.map(r => r.id).join(', ') || '—'));
+        return { title: `Estació ${st}`, pissarra: p, llibreta: me.llibreta };
+      };
+      return me;
+    },
+    // El maquinista rep l'avís (paper amb l'hora) i, si s'avaria, envia un tripulant a peu.
+    driver(id, K) { return makeDriver(id, K, { handOver: false, messenger: true }); },
+  };
+}
+
+// El disseny s'implementa tal com és al paper, sense correccions.
+PROTOCOLS.nostre = makePaperProtocol('El nostre disseny (26/11)', { horaPlus2: false, resendAfterEspera: false, sideRule: false });
+
+function runScenario(scnId, protocolId) { return new World(scnId, protocolId).runToEnd(); }
+
+return { World, SCENARIOS, PROTOCOLS, STATIONS, SECTIONS, ORDER, TIMETABLE, hm, parseHM, trackName, runScenario, viasOf };
+})();
+if (typeof module !== 'undefined') module.exports = SIM;
+
+</script>
+<script>
+const ABOUT_HTML = "<p>El codi té dues parts separades. <b>El món</b> (<code>class World</code>) sap on és cada tren, mou les agulles, porta els telegrames i els missatgers i detecta els accidents. <b>Els actors</b> (central, caps d'estació i maquinistes) només reben cada minut un objecte amb el seu rellotge, els telegrames, papers i missatgers que els han arribat i el que veuen amb els seus ulls. Tot el que recorden ho tenen a la llibreta o a la pissarra, que són les que es mostren a la pàgina.</p>\n\n<h4>Regles i procediments del disseny en paper → on són al codi</h4>\n<table>\n<tr><th>Regla del paper</th><th>Implementació</th></tr>\n<tr><td>3-way-handshake: Petició → Autorització → Sortida … Arribada → Rebut</td><td>Cap d'estació: blocs «peticions de via», «autoritzats» i «què veig a les vies». Central: <code>Petició</code>, <code>grant()</code>, <code>Sortida</code>, <code>Arribada</code>.</td></tr>\n<tr><td>La central comprova a la pissarra la via i que l'estació de destí tingui vies lliures, la bloqueja i avisa el destí (Ocupat)</td><td>Central: <code>blocks</code>, <code>free(st)</code> i <code>grant()</code>.</td></tr>\n<tr><td>Cap sortida sense handshake confirmat</td><td>El cap només dona el paper al maquinista quan té l'Autorització; el maquinista només surt amb paper.</td></tr>\n<tr><td>Cap via alliberada sense Arribada i Rebut</td><td>Central: la via només s'esborra de la pissarra quan arriba l'Arribada del mateix tren.</td></tr>\n<tr><td>Tots els telegrames confirmats (peticions, arribades); si no hi ha rebut, l'Arribada es reenvia periòdicament</td><td>Cap d'estació: reenviament de Petició i d'Arribada cada 6 minuts sense resposta.</td></tr>\n<tr><td>No s'admet un tren a una estació sense vies lliures (la central nega)</td><td>Central: missatge <code>Negació</code>; l'estació torna a demanar.</td></tr>\n<tr><td>La central reenvia l'Arribada a l'estació d'origen</td><td>Central, bloc <code>Arribada</code>.</td></tr>\n<tr><td>Tren endarrerit: avís de Retard a l'estació de destí; la via queda bloquejada</td><td>Central: comprovació de retards cada minut.</td></tr>\n<tr><td>Tren avariat: un tripulant va a peu a l'estació més propera; el cap telegrafia Avaria; la central planeja un tren de socors</td><td>Maquinista: missatger; cap: telegrama <code>Avaria</code>; central: anotació a la pissarra (el tren de socors no es fa circular).</td></tr>\n<tr><td>Telègraf caigut: les estacions afectades no envien trens</td><td>No calen regles noves: sense autorització no es surt, i les arribades es reenvien fins que torna la línia.</td></tr>\n<tr><td>Rellotge: a una hora determinada la central envia «Hora» i les estacions es posen en hora</td><td>Central a les 06:30; cap d'estació: <code>setClock</code> a l'hora del missatge.</td></tr>\n<tr><td>Tots els missatges s'anoten a les llibretes; format «Nº Tren - Origen - Receptor - Hora / Tipus - …»</td><td>Funció <code>fmt()</code> i llibretes de cada actor (la central en té una per estació).</td></tr>\n</table>\n\n<h4>Decisions que el paper no concreta i que s'han hagut d'afegir per programar-lo</h4>\n<ul>\n<li>Es demana via per tram (de cada estació a la següent), perquè tots els trens paren a totes les estacions.</li>\n<li>Un tren de viatgers es demana 6 minuts abans de l'hora de sortida de l'horari, o en arribar si ja és més tard; un mercaderies, en quant el cap el veu.</li>\n<li>La hora de sortida acordada és la de l'horari (o un minut després de tenir la via preparada, si ja ha passat). El cap dona l'avís al maquinista per escrit (un paper amb l'hora).</li>\n<li>Una petició o arribada sense resposta es repeteix al cap de 6 minuts. Si la central respon «Espera», l'estació espera l'autorització i no torna a demanar.</li>\n<li>La central guarda les peticions amb la via ocupada en una cua i les autoritza per ordre quan s'allibera. Si l'estació de destí no té vies lliures, respon «Negació» i l'estació torna a demanar al cap de 5 minuts.</li>\n<li>La central compta els trens de cada estació amb els missatges (Arribada, Sortida, Petició) i amb el reglament: els viatgers apareixen a l'origen 10 minuts abans i a l'estació final se'n van a cotxeres al cap de 5 minuts.</li>\n<li>Quan arriba un «Ocupat», el cap reserva una via lliure i hi deixa posada l'agulla d'aquell costat. Si no espera cap tren, l'agulla oest apunta a la via lliure més baixa i l'est a la més alta. L'agulla de sortida es mou al minut de sortir.</li>\n<li>Si un tren entra sense «Ocupat» (perdut), el cap l'identifica per l'horari i envia l'Arribada igualment.</li>\n<li>Avís de retard quan han passat 10 minuts de l'arribada prevista. El missatge «Hora» s'envia a les 06:30.</li>\n<li>Avaria: si al cap de 10 minuts no s'ha arreglat, el maquinista envia un tripulant a l'estació més propera.</li>\n</ul>\n<p class=\"sub\">El disseny s'ha implementat tal com és, sense corregir-ne els forats. La taula d'avaluació mostra on falla.</p>\n";
+// =====================================================================
+//  INTERFÍCIE (només dibuixa; no intervé en la simulació)
+// =====================================================================
+(() => {
+const { World, SCENARIOS, PROTOCOLS, STATIONS, SECTIONS, ORDER, hm, viasOf } = SIM;
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+for (const [id, p] of Object.entries(PROTOCOLS)) $('protocol').insertAdjacentHTML('beforeend', `<option value="${id}">${esc(p.name)}</option>`);
+$('protocol').value = 'nostre';
+for (const s of SCENARIOS) $('scenario').insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.id}. ${esc(s.name)}</option>`);
+
+let world, timer = null, centralTab = 'general', driverSel = null;
+
+// ---------------- geometria del mapa ----------------
+const X = km => 70 + km * (1060 / 36);
+const HW = 46, VIA_Y = { 1: 150, 2: 176, 3: 202 }, MID = 163, T1 = 156, T2 = 170, TS = 163;
+const CEN = { x: 600, y: 32 };
+const edge = (st, side) => X(STATIONS[st].km) + (side === 'E' ? HW : -HW);
+
+function reset() {
+  stop();
+  world = new World(Number($('scenario').value), $('protocol').value);
+  driverSel = null;
+  render();
+}
+function stop() { if (timer) { clearInterval(timer); timer = null; $('play').textContent = '⏵ Reprodueix'; } }
+function play() {
+  if (timer) return stop();
+  $('play').textContent = '⏸ Pausa';
+  const tick = () => { const n = 1; for (let i = 0; i < n && !world.done; i++) world.step(); render(); if (world.done) stop(); };
+  const restart = () => { clearInterval(timer); timer = setInterval(tick, Math.round(1000 / Number($('speed').value))); };
+  restart();
+  $('speed').oninput = () => { if (timer) restart(); };
+}
+
+function trainRect(tr, x, y) {
+  const fill = tr.state === 'crashed' ? 'var(--red)' : tr.state === 'broken' ? 'var(--amber)' : tr.type === 'P' ? 'var(--blue)' : 'var(--brown)';
+  return `<g><rect x="${x - 21}" y="${y - 7}" width="42" height="14" rx="3" fill="${fill}" stroke="#1d1a16" stroke-width="0.8"/>` +
+    `<text x="${x}" y="${y + 4}" font-size="10" text-anchor="middle" fill="#fff" font-family="Courier New" font-weight="bold">${tr.id}${tr.state === 'crashed' ? '✖' : ''}</text></g>`;
+}
+
+function renderMap() {
+  const w = world, t = w.t - (w.done ? 1 : 0);
+  let s = '';
+  // central i cables de telègraf
+  s += `<rect x="${CEN.x - 60}" y="${CEN.y - 18}" width="120" height="30" fill="#fff" stroke="var(--ink)"/><text x="${CEN.x}" y="${CEN.y + 2}" text-anchor="middle" font-size="13" font-weight="bold">CENTRAL ${hm(t)}</text>`;
+  for (const st of ORDER) {
+    const x = X(STATIONS[st].km);
+    const up = w.lineUp(st, t);
+    s += `<line x1="${CEN.x}" y1="${CEN.y + 12}" x2="${x}" y2="118" stroke="${up ? '#a99d88' : 'var(--red)'}" stroke-dasharray="${up ? '3 3' : '2 6'}"/>`;
+  }
+  // trams
+  for (const sec of SECTIONS) {
+    const x1 = edge(sec.w, 'E'), x2 = edge(sec.e, 'W');
+    if (sec.double) {
+      s += `<line x1="${x1}" y1="${T1}" x2="${x2}" y2="${T1}" stroke="var(--rail)" stroke-width="3"/><line x1="${x1}" y1="${T2}" x2="${x2}" y2="${T2}" stroke="var(--rail)" stroke-width="3"/>`;
+      s += `<text x="${x1 + 6}" y="${T1 - 5}" font-size="9" fill="var(--muted)">via 1 →</text><text x="${x2 - 6}" y="${T2 + 13}" font-size="9" fill="var(--muted)" text-anchor="end">← via 2</text>`;
+      for (const [xe, d] of [[x1, 1], [x2, -1]]) s += `<path d="M${xe + 14 * d} ${T1} L${xe} ${MID} L${xe + 14 * d} ${T2}" stroke="var(--rail)" stroke-width="3" fill="none"/>`;
+    } else {
+      s += `<line x1="${x1}" y1="${TS}" x2="${x2}" y2="${TS}" stroke="var(--rail)" stroke-width="3"/>`;
+      s += `<text x="${(x1 + x2) / 2}" y="${TS - 8}" font-size="9" fill="var(--muted)" text-anchor="middle">via única</text>`;
+    }
+    s += `<text x="${(x1 + x2) / 2}" y="${TS + 32}" font-size="11" text-anchor="middle" fill="var(--muted)">${sec.id} · ${sec.km} km</text>`;
+  }
+  // estacions
+  for (const st of ORDER) {
+    const S = STATIONS[st], cx = X(S.km), xl = cx - HW, xr = cx + HW;
+    s += `<rect x="${xl}" y="132" width="${2 * HW}" height="${S.dead ? 84 : (S.through === 3 ? 84 : 58)}" fill="#fff8e8" stroke="var(--line)"/>`;
+    s += `<text x="${cx}" y="127" text-anchor="middle" font-size="16" font-weight="bold">${st}</text>`;
+    for (const v of viasOf(st)) {
+      const y = VIA_Y[v];
+      let a = xl + 18, b = xr - 18;
+      if (S.dead && v === S.dead.via) { if (S.dead.side === 'E') a = cx - 10; else b = cx + 10; s += `<line x1="${S.dead.side === 'E' ? a : b}" y1="${y - 5}" x2="${S.dead.side === 'E' ? a : b}" y2="${y + 5}" stroke="var(--rail)" stroke-width="3"/>`; }
+      s += `<line x1="${a}" y1="${y}" x2="${b}" y2="${y}" stroke="var(--rail)" stroke-width="2"/><text x="${xl + 3}" y="${y + 3}" font-size="8" fill="var(--muted)">${v}</text>`;
+    }
+    // agulles: línia del tram cap a la via on apunten
+    for (const side of S.sides) {
+      const v = w.switches[st][side], xe = side === 'E' ? xr : xl, xi = side === 'E' ? xr - 18 : xl + 18;
+      s += `<line x1="${xe}" y1="${MID}" x2="${xi}" y2="${VIA_Y[v]}" stroke="#7b2d26" stroke-width="3"/><circle cx="${xe}" cy="${MID}" r="3" fill="#7b2d26"/>`;
+    }
+    const lt = t + w.clockOff[st], off = w.clockOff[st];
+    s += `<text x="${cx}" y="234" text-anchor="middle" font-size="12" font-family="Courier New" fill="${off ? 'var(--red)' : 'var(--ink)'}">⏱ ${hm(lt)}${off ? ` (${off > 0 ? '+' : ''}${off})` : ''}</text>`;
+    if (!w.lineUp(st, t)) s += `<text x="${cx}" y="248" text-anchor="middle" font-size="11" fill="var(--red)">telègraf caigut</text>`;
+  }
+  // trens
+  const perVia = {};
+  for (const tr of Object.values(w.trains)) {
+    if (tr.loc === 'station') {
+      const k = tr.st + tr.via; const n = perVia[k] = (perVia[k] || 0) + 1;
+      s += trainRect(tr, X(STATIONS[tr.st].km) + (n - 1) * 12, VIA_Y[tr.via] - (n - 1) * 4);
+    } else if (tr.loc === 'section') {
+      const sec = SECTIONS.find(x => x.id === tr.sec);
+      const km = STATIONS[sec.w].km + w.xOf(tr, sec);
+      const y = sec.double ? (tr.track === 1 ? T1 : T2) : TS;
+      s += trainRect(tr, Math.min(Math.max(X(km), edge(sec.w, 'E') + 21), edge(sec.e, 'W') - 21), y);
+    }
+  }
+  // telegrames en camí / perduts fa poc
+  for (const g of w.telegrams) {
+    const stn = g.from === 'Central' ? g.to : g.from;
+    const sx = X(STATIONS[stn].km), sy = 118;
+    const [ax, ay, bx, by] = g.from === 'Central' ? [CEN.x, CEN.y + 12, sx, sy] : [sx, sy, CEN.x, CEN.y + 12];
+    if (g.status === 'en camí' && g.sentT <= t) {
+      const p = Math.min(1, (t - g.sentT + 0.5) / 2);
+      s += `<circle cx="${ax + (bx - ax) * p}" cy="${ay + (by - ay) * p}" r="4" fill="var(--blue)"><title>${esc(g.text)}</title></circle>`;
+    } else if (g.status === 'perdut' && t - g.lostAt <= 2) {
+      const p = g.lostAt === g.sentT ? 0.2 : 0.85;
+      s += `<text x="${ax + (bx - ax) * p}" y="${ay + (by - ay) * p + 5}" text-anchor="middle" font-size="15" fill="var(--red)" font-weight="bold">✖<title>${esc(g.text)}</title></text>`;
+    }
+  }
+  for (const m of w.messengers) {
+    if (m.status !== 'en camí') continue;
+    const p = (t - m.sentT) / (m.arriveT - m.sentT);
+    const km = m.fromKm + (STATIONS[m.to].km - m.fromKm) * p;
+    s += `<text x="${X(km)}" y="275" text-anchor="middle" font-size="16">🚶<title>${esc(m.text)}</title></text>`;
+  }
+  $('map').innerHTML = s;
+}
+
+function renderLogs() {
+  const w = world;
+  const rows = [
+    ...w.telegrams.map(g => ({ ...g, kindLabel: g.kind })),
+    ...w.messengers.map(m => ({ ...m, kindLabel: 'Missatger' })),
+  ].sort((a, b) => b.sentT - a.sentT || b.id - a.id);
+  $('tglog').innerHTML = rows.map(g => {
+    const st = g.status === 'perdut' ? 'PERDUT' : g.status === 'lliurat' ? `lliurat ${hm(g.deliveredAt)}` : `en camí (${hm(g.arriveT)})`;
+    const cls = g.status === 'perdut' ? 'lost' : g.status === 'en camí' ? 'transit' : '';
+    const txt = g.kindLabel === 'Missatger' ? `🚶 ${g.text}` : g.text.replace(' | ', '<br>');
+    return `<tr class="${cls}"><td>${g.id}</td><td class="mono">${hm(g.sentT)}</td><td>${esc(g.from)} → ${esc(g.to)}</td><td class="mono">${g.kindLabel === 'Missatger' ? esc(txt) : txt.split('<br>').map(esc).join('<br>')}</td><td class="st">${st}</td></tr>`;
+  }).join('') || '<tr><td colspan="5" class="sub">Encara no s\'ha enviat res.</td></tr>';
+  const ev = $('events');
+  const atBottom = ev.scrollTop + ev.clientHeight >= ev.scrollHeight - 5;
+  ev.innerHTML = w.events.map(e => `<div class="${e.includes('ACCIDENT') ? 'acc' : ''}">${esc(e)}</div>`).join('') || '<span class="sub">—</span>';
+  if (atBottom) ev.scrollTop = ev.scrollHeight;
+}
+
+function notebookHtml(lines) { return esc(lines.join('\n')) || '<span class="sub">(buida)</span>'; }
+
+function renderBooks() {
+  const w = world;
+  const keep = {};
+  document.querySelectorAll('.notebook').forEach(n => { keep[n.dataset.k] = { top: n.scrollTop, bottom: n.scrollTop + n.clientHeight >= n.scrollHeight - 5 }; });
+  let h = '';
+  const cv = w.central.view();
+  const cl = centralTab === 'general' ? (cv.general || []) : cv.llibretes[centralTab];
+  h += `<div class="book"><h3>Central <span class="tabs">${['general', ...ORDER].map(k => `<button data-ct="${k}" class="${k === centralTab ? 'on' : ''}">${k === 'general' ? 'Registre' : 'Llibreta ' + k}</button>`).join('')}</span></h3>
+    <div class="lbl">Pissarra</div><div class="board">${esc(cv.pissarra.join('\n'))}</div>
+    <div class="lbl">${centralTab === 'general' ? 'Registre del cap de circulació' : 'Llibreta de l\'estació ' + centralTab}</div><div class="notebook" data-k="central">${notebookHtml(cl)}</div></div>`;
+  for (const st of ORDER) {
+    const v = w.chiefs[st].view();
+    h += `<div class="book"><h3>${esc(v.title)}</h3><div class="lbl">Pissarra</div><div class="board">${esc(v.pissarra.join('\n'))}</div><div class="lbl">Llibreta</div><div class="notebook" data-k="${st}">${notebookHtml(v.llibreta)}</div></div>`;
+  }
+  const ids = Object.keys(w.drivers);
+  if (!driverSel || !ids.includes(driverSel)) driverSel = ids[0] || null;
+  h += `<div class="book"><h3>Maquinistes <select id="drvsel">${ids.map(i => `<option ${i === driverSel ? 'selected' : ''}>${i}</option>`).join('')}</select></h3>`;
+  if (driverSel) { const v = w.drivers[driverSel].view(); h += `<div class="lbl">Butxaca</div><div class="board">${esc(v.pissarra.join('\n'))}</div><div class="lbl">Llibreta</div><div class="notebook" data-k="drv">${notebookHtml(v.llibreta)}</div>`; }
+  else h += '<div class="sub">Encara no ha aparegut cap tren.</div>';
+  h += '</div>';
+  $('books').innerHTML = h;
+  document.querySelectorAll('.notebook').forEach(n => { const k = keep[n.dataset.k]; n.scrollTop = !k || k.bottom ? n.scrollHeight : k.top; });
+  document.querySelectorAll('[data-ct]').forEach(b => b.onclick = () => { centralTab = b.dataset.ct; renderBooks(); });
+  const ds = $('drvsel'); if (ds) ds.onchange = () => { driverSel = ds.value; renderBooks(); };
+}
+
+function accText(a) { return `${a.type} · ${a.where} · ${hm(a.t)} (${a.trains.join(' i ')})`; }
+
+function render() {
+  const w = world, r = w.results();
+  $('bigclock').textContent = hm(w.done ? w.tEnd : w.t) + (w.done ? ' · fi del dia' : '');
+  $('sPax').textContent = `${r.paxArrived}/8`;
+  $('sFr').textContent = `${r.freightArrived}/2`;
+  $('sLost').textContent = w.telegrams.filter(g => g.status === 'perdut').length;
+  $('sAcc').textContent = r.accidents.length;
+  $('accidents').innerHTML = r.accidents.map(a => `<div class="acc">⚠ ${esc(accText(a))}</div>`).join('');
+  renderMap(); renderLogs(); renderBooks();
+}
+
+function evaluate() {
+  stop();
+  $('evalcard').style.display = '';
+  $('evalout').innerHTML = '<span class="sub">Calculant…</span>';
+  setTimeout(() => {
+    let h = '';
+    for (const [pid, p] of Object.entries(PROTOCOLS)) {
+      h += `<h3 style="margin:10px 0 4px">${esc(p.name)}</h3><table class="evtable"><thead><tr><th>Escenari</th><th>Accidents (quins, on i a quina hora)</th><th>Viatgers arribats</th><th>Retard mitjà</th><th>Mercaderies arribats</th><th>Telegrames perduts</th></tr></thead><tbody>`;
+      for (const s of SCENARIOS) {
+        const w = SIM.runScenario(s.id, pid), r = w.results();
+        h += `<tr><td>${s.id}. ${esc(s.name)}</td><td>${r.accidents.length ? r.accidents.map(a => `<div class="acc">${esc(accText(a))}</div>`).join('') : '<span class="ok">cap</span>'}</td><td>${r.paxArrived}/8</td><td>${r.avgDelay == null ? '—' : r.avgDelay.toFixed(1).replace('.', ',') + ' min'}</td><td>${r.freightArrived}/2</td><td>${w.telegrams.filter(g => g.status === 'perdut').length}</td></tr>`;
+      }
+      h += '</tbody></table>';
+    }
+    h += '<p class="sub">El retard mitjà es calcula sobre els trens de viatgers que arriben a destí (els avançaments compten com a 0).</p>';
+    $('evalout').innerHTML = h;
+    $('evalcard').scrollIntoView({ behavior: 'smooth' });
+  }, 30);
+}
+
+$('reset').onclick = reset;
+$('protocol').onchange = reset;
+$('scenario').onchange = reset;
+$('step').onclick = () => { stop(); world.step(); render(); };
+$('play').onclick = play;
+$('all').onclick = () => { stop(); world.runToEnd(); render(); };
+$('eval').onclick = evaluate;
+
+$('about').innerHTML = ABOUT_HTML;
+reset();
+})();
+
+</script>
+</body>
+</html>

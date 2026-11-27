@@ -1,0 +1,33 @@
+<p>El codi té dues parts separades. <b>El món</b> (<code>class World</code>) sap on és cada tren, mou les agulles, porta els telegrames i els missatgers i detecta els accidents. <b>Els actors</b> (central, caps d'estació i maquinistes) només reben cada minut un objecte amb el seu rellotge, els telegrames, papers i missatgers que els han arribat i el que veuen amb els seus ulls. Tot el que recorden ho tenen a la llibreta o a la pissarra, que són les que es mostren a la pàgina.</p>
+
+<h4>Regles i procediments del disseny en paper → on són al codi</h4>
+<table>
+<tr><th>Regla del paper</th><th>Implementació</th></tr>
+<tr><td>3-way-handshake: Petició → Autorització → Sortida … Arribada → Rebut</td><td>Cap d'estació: blocs «peticions de via», «autoritzats» i «què veig a les vies». Central: <code>Petició</code>, <code>grant()</code>, <code>Sortida</code>, <code>Arribada</code>.</td></tr>
+<tr><td>La central comprova a la pissarra la via i que l'estació de destí tingui vies lliures, la bloqueja i avisa el destí (Ocupat)</td><td>Central: <code>blocks</code>, <code>free(st)</code> i <code>grant()</code>.</td></tr>
+<tr><td>Cap sortida sense handshake confirmat</td><td>El cap només dona el paper al maquinista quan té l'Autorització; el maquinista només surt amb paper.</td></tr>
+<tr><td>Cap via alliberada sense Arribada i Rebut</td><td>Central: la via només s'esborra de la pissarra quan arriba l'Arribada del mateix tren.</td></tr>
+<tr><td>Tots els telegrames confirmats (peticions, arribades); si no hi ha rebut, l'Arribada es reenvia periòdicament</td><td>Cap d'estació: reenviament de Petició i d'Arribada cada 6 minuts sense resposta.</td></tr>
+<tr><td>No s'admet un tren a una estació sense vies lliures (la central nega)</td><td>Central: missatge <code>Negació</code>; l'estació torna a demanar.</td></tr>
+<tr><td>La central reenvia l'Arribada a l'estació d'origen</td><td>Central, bloc <code>Arribada</code>.</td></tr>
+<tr><td>Tren endarrerit: avís de Retard a l'estació de destí; la via queda bloquejada</td><td>Central: comprovació de retards cada minut.</td></tr>
+<tr><td>Tren avariat: un tripulant va a peu a l'estació més propera; el cap telegrafia Avaria; la central planeja un tren de socors</td><td>Maquinista: missatger; cap: telegrama <code>Avaria</code>; central: anotació a la pissarra (el tren de socors no es fa circular).</td></tr>
+<tr><td>Telègraf caigut: les estacions afectades no envien trens</td><td>No calen regles noves: sense autorització no es surt, i les arribades es reenvien fins que torna la línia.</td></tr>
+<tr><td>Rellotge: a una hora determinada la central envia «Hora» i les estacions es posen en hora</td><td>Central a les 06:30; cap d'estació: <code>setClock</code> a l'hora del missatge.</td></tr>
+<tr><td>Tots els missatges s'anoten a les llibretes; format «Nº Tren - Origen - Receptor - Hora / Tipus - …»</td><td>Funció <code>fmt()</code> i llibretes de cada actor (la central en té una per estació).</td></tr>
+</table>
+
+<h4>Decisions que el paper no concreta i que s'han hagut d'afegir per programar-lo</h4>
+<ul>
+<li>Es demana via per tram (de cada estació a la següent), perquè tots els trens paren a totes les estacions.</li>
+<li>Un tren de viatgers es demana 6 minuts abans de l'hora de sortida de l'horari, o en arribar si ja és més tard; un mercaderies, en quant el cap el veu.</li>
+<li>La hora de sortida acordada és la de l'horari (o un minut després de tenir la via preparada, si ja ha passat). El cap dona l'avís al maquinista per escrit (un paper amb l'hora).</li>
+<li>Una petició o arribada sense resposta es repeteix al cap de 6 minuts. Si la central respon «Espera», l'estació espera l'autorització i no torna a demanar.</li>
+<li>La central guarda les peticions amb la via ocupada en una cua i les autoritza per ordre quan s'allibera. Si l'estació de destí no té vies lliures, respon «Negació» i l'estació torna a demanar al cap de 5 minuts.</li>
+<li>La central compta els trens de cada estació amb els missatges (Arribada, Sortida, Petició) i amb el reglament: els viatgers apareixen a l'origen 10 minuts abans i a l'estació final se'n van a cotxeres al cap de 5 minuts.</li>
+<li>Quan arriba un «Ocupat», el cap reserva una via lliure i hi deixa posada l'agulla d'aquell costat. Si no espera cap tren, l'agulla oest apunta a la via lliure més baixa i l'est a la més alta. L'agulla de sortida es mou al minut de sortir.</li>
+<li>Si un tren entra sense «Ocupat» (perdut), el cap l'identifica per l'horari i envia l'Arribada igualment.</li>
+<li>Avís de retard quan han passat 10 minuts de l'arribada prevista. El missatge «Hora» s'envia a les 06:30.</li>
+<li>Avaria: si al cap de 10 minuts no s'ha arreglat, el maquinista envia un tripulant a l'estació més propera.</li>
+</ul>
+<p class="sub">El disseny s'ha implementat tal com és, sense corregir-ne els forats. La taula d'avaluació mostra on falla.</p>
